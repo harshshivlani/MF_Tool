@@ -147,7 +147,7 @@ if side_options == 'Performance Metrics: Custom Data':
     
     cust_df = st.file_uploader('Choose an Excel File')
     if cust_df:
-        cust_df = pd.read_excel(cust_df, header=0, index_col=0)
+        cust_df = pd.read_excel(cust_df, header=0, index_col=0, engine='openpyxl')
         periodicity = st.selectbox(label='Select Data Frequency: ', options=['Daily', 'Monthly'])
         if periodicity =='Daily':
             freq = 252
