@@ -5,6 +5,8 @@ import matplotlib
 import warnings
 warnings.filterwarnings("ignore")
 from datetime import date, timedelta
+from yahooquery import Ticker
+import yahooquery
 import quandl
 quandl.ApiConfig.api_key = "KZ69tzkHfXscfQ1qcJ5K"
 import streamlit as st
@@ -51,6 +53,16 @@ def get_table_download_link(df):
     return f'<a href="data:application/octet-stream;base64,{b64.decode()}" download="NAV_Data.xlsx">Export to Excel</a>' # decode b'abc' => abc
 
 
+def mf_navs(code):
+    mf = Mftool()
+    df = pd.DataFrame(mf.get_scheme_historical_nav(str(code))['data'])
+    df.set_index('date', inplace=True)
+    df.index = pd.to_datetime(df.index, format='%d-%m-%Y')
+    df['nav'] = pd.to_numeric(df['nav'])
+    df.columns = [mf.get_scheme_quote(str(code))['scheme_name']]
+    return df.sort_values(by='date')
+
+
 def get_mf_data(selection, start, end):
     """
     """
@@ -59,13 +71,12 @@ def get_mf_data(selection, start, end):
     names = list(selected_list['List'])
 
     df = pd.DataFrame(index = pd.bdate_range(start, end))
-    df.index.name = 'Date'
+    df.index.name = 'date'
     
     for i in range(0, len(codes)):
-        data = pd.DataFrame(quandl.get("AMFI/"+str(codes[i]), start_date=start, end_date=end)['Net Asset Value'])
-        data.columns = [names[i]]
-        df = df.join(data, on='Date')
+        df = df.join(mf_navs(codes[i]), on='date')
         
+    df.index.name = 'Date'
     return df
 
 def plot_chart(data):
@@ -77,6 +88,24 @@ def plot_chart(data):
     fig = px.line(df, x=df.index, y=df.columns)
     fig.update_layout(xaxis_title='Date',
                       yaxis_title='Return (%)', font=dict(family="Segoe UI, monospace", size=14, color="#7f7f7f"),
+                      legend_title_text='Securities', plot_bgcolor = 'White', yaxis_tickformat = '%', width=950, height=600)
+    fig.update_traces(hovertemplate='Date: %{x} <br>Return: %{y:.2%}')
+    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightPink')
+    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightPink')
+    fig.update_yaxes(automargin=True)
+    fig.add_hline(y=0.0, line_dash="dash", line_color="red")
+    return fig
+
+
+def plot_roll_ret(data):
+    """
+    Returns a Plotly Interactive Chart for the given timeseries data (price)
+    data = price data for the ETFs (dataframe)
+    """
+    df = (data.dropna().pct_change(252).dropna(0.00)).round(4)
+    fig = px.line(df, x=df.index, y=df.columns)
+    fig.update_layout(xaxis_title='Date',
+                      yaxis_title='1Y Rolling Return (%)', font=dict(family="Segoe UI, monospace", size=14, color="#7f7f7f"),
                       legend_title_text='Securities', plot_bgcolor = 'White', yaxis_tickformat = '%', width=950, height=600)
     fig.update_traces(hovertemplate='Date: %{x} <br>Return: %{y:.2%}')
     fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightPink')
@@ -97,7 +126,7 @@ def scatter_plot(rets):
     fig.update_layout(xaxis_title='Annualized Volatility (%)',
                       yaxis_title='Annualized Return (%)', font=dict(family="Segoe UI, monospace", size=14, color="#7f7f7f"),
                       legend_title_text='Securities', plot_bgcolor = 'White', yaxis_tickformat = '.2%', xaxis_tickformat = '.2%', width=950, height=600)
-    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightPink')
+    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightPink',rangemode="tozero")
     fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightPink')
     fig.update_yaxes(automargin=True)
     return fig
@@ -134,9 +163,13 @@ if side_options == 'MF Data Explorer':
         st.markdown("## Risk/Reward Scatter Plot", unsafe_allow_html=True)
         st.plotly_chart(scatter_plot(rets))
         perf_chart =  plot_chart(nav)
+        roll_ret =  plot_roll_ret(nav)
 
         st.markdown("## Performance Chart", unsafe_allow_html=True)
         st.plotly_chart(perf_chart) 
+
+        st.markdown("## 1-Year Rolling Return Chart", unsafe_allow_html=True)
+        st.plotly_chart(roll_ret) 
 
 
 if side_options == 'Performance Metrics: Custom Data':
@@ -162,5 +195,3 @@ if side_options == 'Performance Metrics: Custom Data':
         st.markdown("## Performance Chart", unsafe_allow_html=True)
         perf_chart = plot_chart(cust_df)
         st.plotly_chart(perf_chart)
-
-
